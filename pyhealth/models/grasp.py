@@ -35,27 +35,42 @@ def random_init(dataset, num_centers, device):
 # Compute for each data point the closest center
 def compute_codes(dataset, centers):
     num_points = dataset.size(0)
-    dimension = dataset.size(1)
     num_centers = centers.size(0)
 
-    # print("size:", dataset.size(), centers.size())
     # 5e8 should vary depending on the free memory on the GPU
-    # Ideally, automatically ;)
     chunk_size = int(5e8 / num_centers)
-    codes = torch.zeros(num_points, dtype=torch.long)
-    centers_t = torch.transpose(centers, 0, 1)
-    centers_norms = torch.sum(centers**2, dim=1).view(1, -1)
-    for i in range(0, num_points, chunk_size):
-        begin = i
+    codes = torch.empty(
+        num_points, dtype=torch.long
+    )  # Slightly faster than zeros, we always assign all
+
+    # Precompute for efficiency
+    centers_t = centers.t().contiguous()
+    centers_norms = torch.sum(centers.mul(centers), dim=1).unsqueeze(0)  # (1, C)
+
+    # Fast path: all-at-once
+    if chunk_size >= num_points:
+        dataset_norms = torch.sum(dataset.mul(dataset), dim=1).unsqueeze(1)  # (N, 1)
+        distances = torch.mm(dataset, centers_t)  # (N, C)
+        distances.mul_(-2.0)
+        distances.add_(dataset_norms)
+        distances.add_(centers_norms)
+        min_ind = torch.argmin(distances, dim=1)
+        codes.copy_(min_ind)
+        return codes
+
+    # Chunked path
+    for begin in range(0, num_points, chunk_size):
         end = min(begin + chunk_size, num_points)
-        dataset_piece = dataset[begin:end, :]
-        dataset_norms = torch.sum(dataset_piece**2, dim=1).view(-1, 1)
-        distances = torch.mm(dataset_piece, centers_t)
-        distances *= -2.0
-        distances += dataset_norms
-        distances += centers_norms
-        _, min_ind = torch.min(distances, dim=1)
-        codes[begin:end] = min_ind
+        dataset_piece = dataset[begin:end]
+        dataset_norms = torch.sum(dataset_piece.mul(dataset_piece), dim=1).unsqueeze(
+            1
+        )  # (chunk, 1)
+        distances = torch.mm(dataset_piece, centers_t)  # (chunk, centers)
+        distances.mul_(-2.0)
+        distances.add_(dataset_norms)
+        distances.add_(centers_norms)
+        min_ind = torch.argmin(distances, dim=1)
+        codes[begin:end].copy_(min_ind)
     return codes
 
 
@@ -521,7 +536,7 @@ class GRASP(BaseModel):
                 # (patient, event, embedding_dim)
                 x = self.embeddings[feature_key](x)
                 # (patient, event)
-                mask = torch.any(x !=0, dim=2)
+                mask = torch.any(x != 0, dim=2)
 
             # for case 2: [[code1, code2], [code3, ...], ...]
             elif (dim_ == 3) and (type_ == str):
@@ -535,7 +550,7 @@ class GRASP(BaseModel):
                 # (patient, visit, embedding_dim)
                 x = torch.sum(x, dim=2)
                 # (patient, visit)
-                mask = torch.any(x !=0, dim=2)
+                mask = torch.any(x != 0, dim=2)
 
             # for case 3: [[1.5, 2.0, 0.0], ...]
             elif (dim_ == 2) and (type_ in [float, int]):
