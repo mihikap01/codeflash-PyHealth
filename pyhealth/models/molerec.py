@@ -17,6 +17,7 @@ from pyhealth.datasets import SampleEHRDataset
 
 from pyhealth import BASE_CACHE_PATH as CACHE_PATH
 
+
 def graph_batch_from_smiles(smiles_list, device=torch.device("cpu")):
     edge_idxes, edge_feats, node_feats, lstnode, batch = [], [], [], 0, []
     graphs = [smiles2graph(x) for x in smiles_list]
@@ -169,23 +170,46 @@ class MAB(torch.nn.Module):
             self.ln2 = torch.nn.LayerNorm(self.Vdim)
 
     def forward(self, X: torch.Tensor, Y: torch.Tensor) -> torch.Tensor:
-        Q, K, V = self.Qdense(X), self.Kdense(Y), self.Vdense(Y)
-        batch_size, dim_split = Q.shape[0], self.Vdim // self.number_heads
+        """
+        Optimized multi-head attention module; avoids expensive cat/split by using
+        native reshape/transpose for efficient multi-head computation.
+        """
+        Q = self.Qdense(X)  # (B, T_q, V)
+        K = self.Kdense(Y)  # (B, T_k, V)
+        V = self.Vdense(Y)  # (B, T_k, V)
 
-        Q_split = torch.cat(Q.split(dim_split, 2), 0)
-        K_split = torch.cat(K.split(dim_split, 2), 0)
-        V_split = torch.cat(V.split(dim_split, 2), 0)
+        batch_size, seq_len_q, _ = Q.shape
+        seq_len_k = K.shape[1]
+        head_dim = self.Vdim // self.number_heads
 
-        Attn = torch.matmul(Q_split, K_split.transpose(1, 2))
-        Attn = torch.softmax(Attn / math.sqrt(dim_split), dim=-1)
-        O = Q_split + torch.matmul(Attn, V_split)
-        O = torch.cat(O.split(batch_size, 0), 2)
+        # [B, T, V] -> [B, T, H, D] -> [B, H, T, D]
+        def reshape_heads(x, seq_len):
+            return x.view(batch_size, seq_len, self.number_heads, head_dim).transpose(
+                1, 2
+            )
 
-        O = O if not self.use_ln else self.ln1(O)
-        O = self.Odense(O)
-        O = O if not self.use_ln else self.ln2(O)
+        Q = reshape_heads(Q, seq_len_q)  # (B, H, T_q, D)
+        K = reshape_heads(K, seq_len_k)  # (B, H, T_k, D)
+        V = reshape_heads(V, seq_len_k)  # (B, H, T_k, D)
 
-        return O
+        # Attention weights: (B, H, T_q, D) x (B, H, D, T_k) -> (B, H, T_q, T_k)
+        attn_logits = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(head_dim)
+        attn = torch.softmax(attn_logits, dim=-1)  # (B, H, T_q, T_k)
+
+        # Weighted sum: (B, H, T_q, T_k) x (B, H, T_k, D) -> (B, H, T_q, D)
+        output = Q + torch.matmul(attn, V)
+
+        # Merge heads: (B, H, T_q, D) -> (B, T_q, H, D) -> (B, T_q, V)
+        output = (
+            output.transpose(1, 2).contiguous().view(batch_size, seq_len_q, self.Vdim)
+        )
+
+        if self.use_ln:
+            output = self.ln1(output)
+        output = self.Odense(output)
+        if self.use_ln:
+            output = self.ln2(output)
+        return output
 
 
 class SAB(torch.nn.Module):
@@ -547,7 +571,7 @@ class MoleRec(BaseModel):
             raise ValueError("number of GNN layers is determined by num_gnn_layers")
         if "hidden_size" in kwargs:
             raise ValueError("hidden_size is determined by hidden_dim")
-    
+
             # save ddi adj
         ddi_adj = self.generate_ddi_adj()
         np.save(os.path.join(CACHE_PATH, "ddi_adj.npy"), ddi_adj.numpy())
