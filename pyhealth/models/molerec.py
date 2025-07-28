@@ -17,6 +17,7 @@ from pyhealth.datasets import SampleEHRDataset
 
 from pyhealth import BASE_CACHE_PATH as CACHE_PATH
 
+
 def graph_batch_from_smiles(smiles_list, device=torch.device("cpu")):
     edge_idxes, edge_feats, node_feats, lstnode, batch = [], [], [], 0, []
     graphs = [smiles2graph(x) for x in smiles_list]
@@ -42,15 +43,9 @@ def graph_batch_from_smiles(smiles_list, device=torch.device("cpu")):
 
 class StaticParaDict(torch.nn.Module):
     def __init__(self, **kwargs):
-        super(StaticParaDict, self).__init__()
+        super().__init__()
         for k, v in kwargs.items():
-            if isinstance(v, torch.Tensor):
-                setattr(self, k, torch.nn.Parameter(v, requires_grad=False))
-            elif isinstance(v, np.ndarray):
-                v = torch.from_numpy(v)
-                setattr(self, k, torch.nn.Parameter(v, requires_grad=False))
-            else:
-                setattr(self, k, v)
+            setattr(self, k, self._to_static_param(v))
 
     def forward(self, key: str) -> Any:
         return getattr(self, key)
@@ -64,6 +59,14 @@ class StaticParaDict(torch.nn.Module):
         if isinstance(value, torch.Tensor):
             value = torch.nn.Parameter(value, requires_grad=False)
         setattr(self, key, value)
+
+    @staticmethod
+    def _to_static_param(value):
+        if isinstance(value, np.ndarray):
+            value = torch.from_numpy(value)
+        if isinstance(value, torch.Tensor):
+            return torch.nn.Parameter(value, requires_grad=False)
+        return value
 
 
 class GINConv(torch.nn.Module):
@@ -547,7 +550,7 @@ class MoleRec(BaseModel):
             raise ValueError("number of GNN layers is determined by num_gnn_layers")
         if "hidden_size" in kwargs:
             raise ValueError("hidden_size is determined by hidden_dim")
-    
+
             # save ddi adj
         ddi_adj = self.generate_ddi_adj()
         np.save(os.path.join(CACHE_PATH, "ddi_adj.npy"), ddi_adj.numpy())
