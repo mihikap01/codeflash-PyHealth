@@ -19,13 +19,21 @@ def ddi_rate_score(medications: List[np.ndarray], ddi_matrix: np.ndarray) -> flo
     """
     all_cnt = 0
     ddi_cnt = 0
+
+    # Precompute element-wise logical OR of ddi_matrix and its transpose for possible asymmetry
+    ddi_mtx = np.logical_or(ddi_matrix, ddi_matrix.T)
+
     for sample in medications:
-        for i, med_i in enumerate(sample):
-            for j, med_j in enumerate(sample):
-                if j <= i: continue
-                all_cnt += 1
-                if ddi_matrix[med_i, med_j] == 1 or ddi_matrix[med_j, med_i] == 1:
-                    ddi_cnt += 1
+        n = len(sample)
+        if n < 2:
+            continue
+        # Get all unique pairs (i<j) via np.triu_indices
+        med_indices = np.array(sample)
+        # Use numpy broadcasting to get upper triangle indices
+        a, b = np.triu_indices(n, k=1)
+        all_cnt += len(a)
+        ddi_cnt += np.count_nonzero(ddi_mtx[med_indices[a], med_indices[b]])
+
     if all_cnt == 0:
         return 0
     return ddi_cnt / all_cnt
