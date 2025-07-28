@@ -122,51 +122,50 @@ def drug_recommendation_mimic4_fn(patient: Patient):
         >>> mimic4_sample.samples[0]
         [{'visit_id': '130744', 'patient_id': '103', 'conditions': [['42', '109', '19', '122', '98', '663', '58', '51']], 'procedures': [['1']], 'label': [['2', '3', '4']]}]
     """
-    samples = []
-    for i in range(len(patient)):
-        visit: Visit = patient[i]
-        conditions = visit.get_code_list(table="diagnoses_icd")
-        procedures = visit.get_code_list(table="procedures_icd")
-        drugs = visit.get_code_list(table="prescriptions")
-        # ATC 3 level
-        drugs = [drug[:4] for drug in drugs]
-        # exclude: visits without condition, procedure, or drug code
-        if len(conditions) * len(procedures) * len(drugs) == 0:
+    patient_id = patient.patient_id
+    visits = []
+    # Preprocess and filter visits in one scan, use local vars for speed
+    for visit in patient:
+        conds = visit.get_code_list("diagnoses_icd")
+        procs = visit.get_code_list("procedures_icd")
+        drugs = visit.get_code_list("prescriptions")
+        if not conds or not procs or not drugs:
             continue
-        # TODO: should also exclude visit with age < 18
+        # ATC 3 level
+        drugs = [d[:4] for d in drugs]
+        if not drugs:
+            continue
+        visits.append((visit.visit_id, conds, procs, drugs))
+    num_visits = len(visits)
+    if num_visits < 2:
+        return []
+    # Efficient history building (preallocate lists)
+    samples = []
+    conditions_hist = []
+    procedures_hist = []
+    drugs_hist = []
+    # Loop through visits, efficiently build up histories
+    for idx, (visit_id, conds, procs, drugs) in enumerate(visits):
+        # Keep history as slices of the running list for O(1) append
+        conditions_hist.append(conds)
+        procedures_hist.append(procs)
+        drugs_hist.append(drugs)
+        # Each sample's history is all up to (current), and drugs is drugs at current
         samples.append(
             {
-                "visit_id": visit.visit_id,
-                "patient_id": patient.patient_id,
-                "conditions": conditions,
-                "procedures": procedures,
-                "drugs": drugs,
-                "drugs_hist": drugs,
+                "visit_id": visit_id,
+                "patient_id": patient_id,
+                "conditions": list(
+                    conditions_hist
+                ),  # make a shallow copy for this sample
+                "procedures": list(procedures_hist),
+                "drugs_hist": list(drugs_hist),
+                "drugs": drugs,  # drugs for current visit
             }
         )
-    # exclude: patients with less than 2 visit
-    if len(samples) < 2:
-        return []
-    # add history
-    samples[0]["conditions"] = [samples[0]["conditions"]]
-    samples[0]["procedures"] = [samples[0]["procedures"]]
-    samples[0]["drugs_hist"] = [samples[0]["drugs_hist"]]
-
-    for i in range(1, len(samples)):
-        samples[i]["conditions"] = samples[i - 1]["conditions"] + [
-            samples[i]["conditions"]
-        ]
-        samples[i]["procedures"] = samples[i - 1]["procedures"] + [
-            samples[i]["procedures"]
-        ]
-        samples[i]["drugs_hist"] = samples[i - 1]["drugs_hist"] + [
-            samples[i]["drugs_hist"]
-        ]
-
-    # remove the target drug from the history
-    for i in range(len(samples)):
+    # Remove target drugs from drugs_hist at each position (set to empty list for curr visit)
+    for i in range(num_visits):
         samples[i]["drugs_hist"][i] = []
-
     return samples
 
 
