@@ -41,19 +41,21 @@ def strptime(s: str) -> Optional[datetime]:
         return None
     return dateutil_parse(s)
 
-def padyear(year: str, month='1', day='1') -> str:
+
+def padyear(year: str, month="1", day="1") -> str:
     """Pad a date time year of format 'YYYY' to format 'YYYY-MM-DD'
-    
-    Args: 
+
+    Args:
         year: str, year to be padded. Must be non-zero value.
         month: str, month string to be used as padding. Must be in [1, 12]
         day: str, day string to be used as padding. Must be in [1, 31]
-        
+
     Returns:
         padded_date: str, padded year.
-    
+
     """
     return f"{year}-{month}-{day}"
+
 
 def flatten_list(l: List) -> List:
     """Flattens a list of list.
@@ -175,7 +177,9 @@ def collate_fn_dict_with_padding(batch: List[dict]) -> dict:
                     # Scalars, treat as stackable
                     collated[key] = torch.stack(values)
                 elif values[0].dim() >= 1:
-                    collated[key] = pad_sequence(values, batch_first=True, padding_value=0)
+                    collated[key] = pad_sequence(
+                        values, batch_first=True, padding_value=0
+                    )
                 else:
                     raise ValueError(f"Unsupported tensor shape: {values[0].shape}")
         else:
@@ -185,7 +189,9 @@ def collate_fn_dict_with_padding(batch: List[dict]) -> dict:
     return collated
 
 
-def get_dataloader(dataset: torch.utils.data.Dataset, batch_size: int, shuffle: bool = False) -> DataLoader:
+def get_dataloader(
+    dataset: torch.utils.data.Dataset, batch_size: int, shuffle: bool = False
+) -> DataLoader:
     """Creates a DataLoader for a given dataset.
 
     Args:
@@ -196,14 +202,12 @@ def get_dataloader(dataset: torch.utils.data.Dataset, batch_size: int, shuffle: 
     Returns:
         A DataLoader instance for the dataset.
     """
-    dataloader = DataLoader(
+    return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         collate_fn=collate_fn_dict_with_padding,
     )
-
-    return dataloader
 
 
 if __name__ == "__main__":
