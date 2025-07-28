@@ -18,17 +18,14 @@ from pyhealth.models.utils import get_last_visit
 
 def random_init(dataset, num_centers, device):
     num_points = dataset.size(0)
-    dimension = dataset.size(1)
-    # print("random size", dataset.size())
-    # print("numcenter", num_centers)
 
-    indices = torch.tensor(
-        np.array(random.sample(range(num_points), k=num_centers)), dtype=torch.long
+    # Sample without replacement indices directly as a Python list, convert to tensor and move to device
+    indices = torch.as_tensor(
+        random.sample(range(num_points), k=num_centers), dtype=torch.long, device=device
     )
 
-    centers = torch.gather(
-        dataset, 0, indices.view(-1, 1).expand(-1, dimension).to(device=device)
-    )
+    # Efficient row selection using advanced indexing
+    centers = dataset[indices]
     return centers
 
 
@@ -521,7 +518,7 @@ class GRASP(BaseModel):
                 # (patient, event, embedding_dim)
                 x = self.embeddings[feature_key](x)
                 # (patient, event)
-                mask = torch.any(x !=0, dim=2)
+                mask = torch.any(x != 0, dim=2)
 
             # for case 2: [[code1, code2], [code3, ...], ...]
             elif (dim_ == 3) and (type_ == str):
@@ -535,7 +532,7 @@ class GRASP(BaseModel):
                 # (patient, visit, embedding_dim)
                 x = torch.sum(x, dim=2)
                 # (patient, visit)
-                mask = torch.any(x !=0, dim=2)
+                mask = torch.any(x != 0, dim=2)
 
             # for case 3: [[1.5, 2.0, 0.0], ...]
             elif (dim_ == 2) and (type_ in [float, int]):
