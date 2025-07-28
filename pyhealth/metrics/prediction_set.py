@@ -1,17 +1,17 @@
 import numpy as np
 
 
-def size(y_pred:np.ndarray):
-    """Average size of the prediction set.
-    """
+def size(y_pred: np.ndarray):
+    """Average size of the prediction set."""
     return np.mean(y_pred.sum(1))
 
-def rejection_rate(y_pred:np.ndarray):
-    """Rejection rate, defined as the proportion of samples with prediction set size != 1
-    """
+
+def rejection_rate(y_pred: np.ndarray):
+    """Rejection rate, defined as the proportion of samples with prediction set size != 1"""
     return np.mean(y_pred.sum(1) != 1)
 
-def _missrate(y_pred:np.ndarray, y_true:np.ndarray, ignore_rejected=False):
+
+def _missrate(y_pred: np.ndarray, y_true: np.ndarray, ignore_rejected=False):
     """Computes the class-wise mis-coverage rate (or risk).
 
     Args:
@@ -25,21 +25,50 @@ def _missrate(y_pred:np.ndarray, y_true:np.ndarray, ignore_rejected=False):
     """
     # currently handles multilabel and multiclass
     K = y_pred.shape[1]
-    if len(y_true.shape) == 1:
-        y_true, _ = np.zeros((len(y_true),K), dtype=bool), y_true
-        y_true[np.arange(len(y_true)), _] = 1
-    y_true = y_true.astype(bool)
+    # Optimized one-hot conversion (if y_true is 1D)
+    if y_true.ndim == 1:
+        idx = y_true
+        y_true = np.zeros((y_pred.shape[0], K), dtype=bool)
+        y_true[np.arange(y_pred.shape[0]), idx] = True
+    else:
+        y_true = y_true.astype(bool, copy=False)
 
-    keep_msk = (y_pred.sum(1) == 1) if ignore_rejected else np.ones(len(y_true), dtype=bool)
-    missed = []
-    for k in range(K):
-        missed.append(1-np.mean(y_pred[keep_msk & y_true[:, k], k]))
+    # Compute keep_msk in a vectorized way
+    if ignore_rejected:
+        keep_msk = y_pred.sum(1) == 1
+    else:
+        keep_msk = None  # None is better for advanced indexing
 
-    return np.asarray(missed)
+    # Vectorized filtering: Get mask for "relevant" samples (for each class)
+    # mask shape: (n_samples, K), True if sample should be included for each class
+    # For each class, a sample is "kept" if
+    #  - (not rejected if ignore_rejected) and
+    #  - true label for class is True in this sample
+    if ignore_rejected:
+        included_mask = keep_msk[:, None] & y_true
+    else:
+        included_mask = y_true
+
+    # For every class: gather predicted value for those samples that are kept and are true for class k
+    # This produces an array of shape (n_samples, K); we then process columnwise.
+    pred_included = np.where(included_mask, y_pred, 0)
+
+    # Count how many for each class are included (ensure not to divide by zero)
+    n_included = included_mask.sum(axis=0)
+    # To avoid division by zero, mark as 1 for now, we'll fill with nan later
+    n_included_safe = np.where(n_included == 0, 1, n_included)
+
+    # For each class: sum preds for hit ratio, then miss = 1-mean
+    mean_pred = pred_included.sum(axis=0) / n_included_safe
+    missed = 1 - mean_pred
+
+    # Where there were no samples, set miss to nan (same as np.mean([]) = nan)
+    missed = np.where(n_included == 0, np.nan, missed)
+
+    return missed
 
 
-
-def miscoverage_ps(y_pred:np.ndarray, y_true:np.ndarray):
+def miscoverage_ps(y_pred: np.ndarray, y_true: np.ndarray):
     """Miscoverage rates for all samples (similar to recall).
 
     Example:
@@ -57,7 +86,8 @@ def miscoverage_ps(y_pred:np.ndarray, y_true:np.ndarray):
     """
     return _missrate(y_pred, y_true, False)
 
-def error_ps(y_pred:np.ndarray, y_true:np.ndarray):
+
+def error_ps(y_pred: np.ndarray, y_true: np.ndarray):
     """Miscoverage rates for unrejected samples, where rejection is defined to be sets with size !=1).
 
     Example:
@@ -75,7 +105,8 @@ def error_ps(y_pred:np.ndarray, y_true:np.ndarray):
     """
     return _missrate(y_pred, y_true, True)
 
-def miscoverage_overall_ps(y_pred:np.ndarray, y_true:np.ndarray):
+
+def miscoverage_overall_ps(y_pred: np.ndarray, y_true: np.ndarray):
     """Miscoverage rate for the true label. Only for multiclass.
 
     Example:
@@ -95,7 +126,8 @@ def miscoverage_overall_ps(y_pred:np.ndarray, y_true:np.ndarray):
 
     return 1 - np.mean(truth_pred)
 
-def error_overall_ps(y_pred:np.ndarray, y_true:np.ndarray):
+
+def error_overall_ps(y_pred: np.ndarray, y_true: np.ndarray):
     """Overall error rate for the un-rejected samples.
 
     Example:
