@@ -30,21 +30,29 @@ class SequenceProcessor(FeatureProcessor):
         Returns:
             Tensor of indices.
         """
-        indices = []
+        code_vocab = self.code_vocab
+        unk_index = code_vocab["<unk>"]
+        indices_append = indices = []
+        next_index = self._next_index
+
         for token in value:
-            if token is None: # missing values
-                indices.append(self.code_vocab["<unk>"])
+            if token is None:  # missing values
+                indices_append.append(unk_index)
             else:
-                if token not in self.code_vocab:
-                    self.code_vocab[token] = self._next_index
-                    self._next_index += 1
-                indices.append(self.code_vocab[token])
+                # Use local code_vocab; eliminate repeated attribute/dict lookups
+                idx = code_vocab.get(token)
+                if idx is None:
+                    code_vocab[token] = next_index
+                    indices_append.append(next_index)
+                    next_index += 1
+                else:
+                    indices_append.append(idx)
+
+        self._next_index = next_index  # Save back updated index
         return torch.tensor(indices, dtype=torch.long)
-    
+
     def size(self):
         return len(self.code_vocab)
-    
+
     def __repr__(self):
-        return (
-            f"SequenceProcessor(code_vocab_size={len(self.code_vocab)})"
-        )
+        return f"SequenceProcessor(code_vocab_size={len(self.code_vocab)})"
