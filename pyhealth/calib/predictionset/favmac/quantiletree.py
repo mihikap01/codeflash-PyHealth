@@ -32,22 +32,30 @@ class BST:
         self.debug = debug
 
     def _check_properties(self):
-        if not self.debug: return True
-        def recurse(node: Node):
-            if node == self.nil: return True
+        if not self.debug:
+            return True
+
+        # Inline stack to avoid repeated function creation and attribute lookup
+        nil = self.nil
+        stack = [self.root]
+        while stack:
+            node = stack.pop()
+            if node is nil:
+                continue
             assert node.val is not None
-            if node.left != self.nil:
-                assert node.left.val < node.val, f"left={node.left.val} > parent={node.val}"
-            if node.right != self.nil:
-                assert node.right.val > node.val, f"right={node.right.val} < parent={node.val}"
-            recurse(node.left)
-            recurse(node.right)
+            left = node.left
+            right = node.right
+            if left is not nil:
+                assert left.val < node.val, f"left={left.val} > parent={node.val}"
+                stack.append(left)
+            if right is not nil:
+                assert right.val > node.val, f"right={right.val} < parent={node.val}"
+                stack.append(right)
 
-        recurse(self.root)
-
-        assert self.nil.val is None
-        assert self.nil.left is None
-        assert self.nil.right is None
+        # Check nil node properties as before
+        assert nil.val is None
+        assert nil.left is None
+        assert nil.right is None
         # print("BST Checks")
         return True
 
