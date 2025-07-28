@@ -105,7 +105,7 @@ class Tokenizer:
 
     def convert_tokens_to_indices(self, tokens: List[str]) -> List[int]:
         """Converts a list of tokens to indices.
-        
+
         Examples:
             >>> tokens = ['A03C', 'A03D', 'A03E', 'A03F', 'A04A', 'A05A', 'A05B', 'B035', 'C129']
             >>> indices = tokenizer.convert_tokens_to_indices(tokens)
@@ -116,7 +116,7 @@ class Tokenizer:
 
     def convert_indices_to_tokens(self, indices: List[int]) -> List[str]:
         """Converts a list of indices to tokens.
-        
+
         Examples:
             >>> indices = [0, 1, 2, 3, 4, 5]
             >>> tokens = tokenizer.convert_indices_to_tokens(indices)
@@ -141,7 +141,7 @@ class Tokenizer:
             truncation: whether to truncate the tokens to max_length.
             max_length: maximum length of the tokens. This argument is ignored
                 if truncation is False.
-        
+
         Examples:
             >>> tokens = [
             ...     ['A03C', 'A03D', 'A03E', 'A03F'],
@@ -181,7 +181,7 @@ class Tokenizer:
         Args:
             batch: List of lists of indices to convert to tokens.
             padding: whether to keep the padding tokens from the tokens.
-        
+
         Examples:
             >>> indices = [
             ...     [8, 9, 10, 11],
@@ -196,11 +196,29 @@ class Tokenizer:
             >>> print ('case 2:', tokens)
             case 2: [['A03C', 'A03D', 'A03E', 'A03F'], ['A04A', '<unk>', '<unk>', '<pad>']]
         """
+        idx2token = self.vocabulary.idx2token
+        # Precompute <pad> index (if exists), to avoid string comparison in loop
+        pad_token = "<pad>"
+        pad_idx = None
+        if pad_token in self.vocabulary.token2idx:
+            pad_idx = self.vocabulary.token2idx[pad_token]
 
-        batch = [[self.vocabulary.idx2token[idx] for idx in tokens] for tokens in batch]
-        if not padding:
-            return [[token for token in tokens if token != "<pad>"] for tokens in batch]
-        return batch
+        if padding:
+            # Vectorized inner mapping, no <pad> removal
+            return [[idx2token[idx] for idx in tokens] for tokens in batch]
+        else:
+            # Remove padding tokens by index, which is faster than comparing string
+            if pad_idx is not None:
+                return [
+                    [idx2token[idx] for idx in tokens if idx != pad_idx]
+                    for tokens in batch
+                ]
+            else:
+                # Fallback in case pad token doesn't exist
+                return [
+                    [idx2token[idx] for idx in tokens if idx2token[idx] != pad_token]
+                    for tokens in batch
+                ]
 
     def batch_encode_3d(
         self,
@@ -220,7 +238,7 @@ class Tokenizer:
             max_length: a tuple of two integers indicating the maximum length of the
                 tokens along the first and second dimension. This argument is ignored
                 if truncation is False.
-        
+
         Examples:
                 >>> tokens = [
                 ...     [
@@ -290,15 +308,15 @@ class Tokenizer:
         Args:
             batch: List of lists of lists of indices to convert to tokens.
             padding: whether to keep the padding tokens from the tokens.
-        
+
         Examples:
             >>> indices = [
             ...     [
-            ...         [8, 9, 10, 11], 
+            ...         [8, 9, 10, 11],
             ...         [24, 25, 0, 0]
-            ...     ], 
+            ...     ],
             ...     [
-            ...         [12, 1, 1, 0], 
+            ...         [12, 1, 1, 0],
             ...         [0, 0, 0, 0]
             ...     ]
             ... ]
