@@ -52,39 +52,51 @@ def KDE_classification(X: torch.Tensor, Y: torch.Tensor, kern:RBFKernelMean=None
     """
     if kern is None:
         kern = RBFKernelMean(h=1.)
-    #Y is a one-hot representation
     if X_pred is None:
+        # Leave-one-out prediction, drop_max is always True
         Kijs = kern(X, X)
         drop_max = True
     else:
-        if len(X_pred.shape) == 1:
+        if X_pred.ndim == 1:
             X_pred = X_pred.unsqueeze(0)
         Kijs = kern(X_pred, X)
     if drop_max:
-        Kijs = torch.where(
-                Kijs < _MAX_KERNEL_VALUE-min_eps,
-                Kijs,
-                torch.zeros((), device=Kijs.device, dtype=Kijs.dtype)
-                )
-    Kijs = Kijs * weights #Kijs[:, j] *= weights[j]
-    Kijs = Kijs / torch.sum(Kijs, 1, keepdim=True).clip(min_eps) #K[i,j] = K(x[i], self.X[j])
+        # Use in-place masking where possible for performance
+        mask = (Kijs < (_MAX_KERNEL_VALUE - min_eps))
+        # Instead of where, use mask for better performance/memory 
+        Kijs = Kijs * mask
+    # Element-wise weights multiplication
+    if isinstance(weights, torch.Tensor) and weights.numel() > 1:
+        Kijs = Kijs * weights
+    elif weights != 1.:
+        Kijs = Kijs * weights  # float or int, broadcast efficiently
+    # Compute row sums for normalization, with stable torch.clip
+    denom = torch.sum(Kijs, 1, keepdim=True)
+    denom = torch.clamp(denom, min=min_eps)
+    Kijs = Kijs / denom
     pred = torch.matmul(Kijs, Y)
     return pred
 
 def batched_KDE_classification(X: torch.Tensor, Y: torch.Tensor, kern=None, X_pred: torch.Tensor=None,
                        weights: Union[torch.Tensor, float, int]=1., min_eps=1e-10):
-    pred = []
-    batch_size=32
+    # Fast batched inference (with no_grad and efficient concatenation)
+    batch_size = 32
     drop_max = False
     if X_pred is None:
         drop_max = True
         X_pred = X
+    N = X_pred.shape[0]
+    outs = []  # Will store torch.Tensors for concatenation
     with torch.no_grad():
-        for st in range(0, len(X_pred), batch_size):
-            ed = min(len(X_pred), st+batch_size)
-            pred.append(KDE_classification(
-                X, Y, kern, X_pred[st:ed], weights, min_eps=min_eps, drop_max=drop_max))
-        return torch.concat(pred)
+        for st in range(0, N, batch_size):
+            ed = min(N, st + batch_size)
+            preds = KDE_classification(
+                X, Y, kern, X_pred[st:ed], weights, min_eps=min_eps, drop_max=drop_max)
+            outs.append(preds)
+        if len(outs) == 1:
+            return outs[0]
+        else:
+            return torch.cat(outs, dim=0)
 
 class KDECrossEntropyLoss(torch.nn.Module):
     reduction: str
