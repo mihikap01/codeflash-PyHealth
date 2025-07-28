@@ -43,18 +43,39 @@ class InnerMap(ABC):
             logger.debug(f"Processing {vocabulary} code...")
             df = download_and_read_csv(csv_filename, refresh_cache)
             # create graph
-            df = df.set_index("code")
+            if "code" not in df.columns:
+                raise ValueError(f"'code' column is missing from {csv_filename}")
             self.graph = nx.DiGraph()
-            # add nodes
-            for code, row in df.iterrows():
-                row_dict = row.to_dict()
-                row_dict.pop("parent_code", None)
-                self.graph.add_node(code, **row_dict)
-            # add edges
-            for code, row in df.iterrows():
-                if "parent_code" in row:
-                    if not pd.isna(row["parent_code"]):
-                        self.graph.add_edge(row["parent_code"], code)
+
+            # Prepare lists for nodes and edges
+            node_data = []
+            edge_data = []
+
+            # Fast access to column index for performance
+            code_col_idx = df.columns.get_loc("code")
+            parent_code_col_idx = None
+            if "parent_code" in df.columns:
+                parent_code_col_idx = df.columns.get_loc("parent_code")
+
+            # Collect all node data & edge data efficiently
+            for row in df.itertuples(index=False, name=None):
+                code = row[code_col_idx]
+                # Build node attributes, excluding 'parent_code'
+                node_attr = {}
+                for idx, col in enumerate(df.columns):
+                    if col == "code" or col == "parent_code":
+                        continue
+                    node_attr[col] = row[idx]
+                node_data.append((code, node_attr))
+                # Record edge from parent_code (if not NaN)
+                if parent_code_col_idx is not None:
+                    parent_code = row[parent_code_col_idx]
+                    if pd.notna(parent_code):
+                        edge_data.append((parent_code, code))
+
+            self.graph.add_nodes_from(node_data)
+            self.graph.add_edges_from(edge_data)
+
             logger.debug(f"Saved {vocabulary} code to {pickle_filepath}")
             save_pickle(self.graph, pickle_filepath)
         return
