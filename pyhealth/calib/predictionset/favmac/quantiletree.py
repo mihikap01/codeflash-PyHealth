@@ -1,5 +1,7 @@
 import math
 
+pass
+
 RED, BLACK, DOUBLEBLACK = 0, 1, 2
 
 class Node:
@@ -62,7 +64,16 @@ class BST:
     # search the tree for the key k
     # and return the corresponding node
     def searchTree(self, k):
-        return self.__search_tree_helper(self.root, k)
+        node = self.root
+        nil = self.nil
+        while node != nil:
+            if k == node.val:
+                return node
+            elif k < node.val:
+                node = node.left
+            else:
+                node = node.right
+        return nil
 
     # find the node with the minimum key
     def minimum(self, node):
