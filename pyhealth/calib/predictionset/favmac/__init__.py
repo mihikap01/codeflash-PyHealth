@@ -62,13 +62,36 @@ class AdditiveSetFunction:
     def greedy_maximize(self, S: np.ndarray, pred: np.ndarray=None, d_proxy:np.ndarray=None, prev_util_and_proxy=None):
         # (prev_u, prev_p) = prev_util_and_proxy
         assert self.mode == 'util', "This is only used for util function"
-        if (1-S).sum() == 0: return None
-        d_util = self.values
-        if pred is not None: d_util = d_util * pred
+        mask = (1 - S) != 0  # mask for eligible entries
+        if not np.any(mask):
+            return None
 
-        objective = d_util / (1 if d_proxy is None else d_proxy.clip(1e-8))
-        k = pd.Series((1-S) * objective).dropna().idxmax()
-        return k, objective[k]
+        d_util = self.values
+        if pred is not None:
+            d_util = d_util * pred
+
+        if d_proxy is not None:
+            # Use np.clip directly for in-place safety and to avoid pandas
+            denom = d_proxy.clip(1e-8)
+        else:
+            denom = 1
+
+        # Compute the objective just for eligible entries
+        objective = np.zeros_like(d_util, dtype=np.float64)
+        np.multiply((1 - S), d_util / denom, out=objective)
+
+        # Use np.nanargmax for speed if there might be NaNs, or argmax if not
+        if np.isnan(objective).any():
+            valid_indices = np.where(mask & ~np.isnan(objective))[0]
+            if valid_indices.size == 0:
+                return None
+            max_idx = valid_indices[np.argmax(objective[valid_indices])]
+        else:
+            # Only consider the valid indices (where 1-S != 0)
+            max_idx = np.argmax(objective * mask)
+            if not mask[max_idx]:
+                return None
+        return max_idx, objective[max_idx]
 
     def greedy_maximize_seq(self, pred: np.ndarray=None, d_proxy:np.ndarray=None):
         # if cost is also additive, then cost_proxy is fixed: weight * (1-p)
