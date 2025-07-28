@@ -18,14 +18,13 @@ def categorize_los(days: int):
     if days < 1:
         return 0
     # each day of the first week
-    elif 1 <= days <= 7:
+    if days <= 7:
         return days
     # stays of over one week but less than two
-    elif 7 < days <= 14:
+    if days <= 14:
         return 8
     # stays of over two weeks
-    else:
-        return 9
+    return 9
 
 
 def length_of_stay_prediction_mimic3_fn(patient: Patient):
@@ -172,6 +171,7 @@ def length_of_stay_prediction_eicu_fn(patient: Patient):
         [{'visit_id': '130744', 'patient_id': '103', 'conditions': [['42', '109', '98', '663', '58', '51']], 'procedures': [['1']], 'label': 5}]
     """
     samples = []
+    patient_id = patient.patient_id  # local var for efficiency
 
     for visit in patient:
 
@@ -179,7 +179,7 @@ def length_of_stay_prediction_eicu_fn(patient: Patient):
         procedures = visit.get_code_list(table="physicalExam")
         drugs = visit.get_code_list(table="medication")
         # exclude: visits without condition, procedure, or drug code
-        if len(conditions) * len(procedures) * len(drugs) == 0:
+        if not (conditions and procedures and drugs):
             continue
 
         los_days = (visit.discharge_time - visit.encounter_time).days
@@ -189,10 +189,10 @@ def length_of_stay_prediction_eicu_fn(patient: Patient):
         samples.append(
             {
                 "visit_id": visit.visit_id,
-                "patient_id": patient.patient_id,
-                "conditions": [conditions],
-                "procedures": [procedures],
-                "drugs": [drugs],
+                "patient_id": patient_id,
+                "conditions": conditions,
+                "procedures": procedures,
+                "drugs": drugs,
                 "label": los_category,
             }
         )
