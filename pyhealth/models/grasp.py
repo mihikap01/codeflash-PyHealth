@@ -1,4 +1,3 @@
-import copy
 import math
 import random
 from typing import Dict, List, Optional, Tuple
@@ -122,8 +121,32 @@ class GraphConvolution(nn.Module):
 
 
 def clones(module, N):
-    "Produce N identical layers."
-    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+    """Produce N identical layers."""
+
+    # Use the module's class and its __dict__ to re-create new copies more efficiently
+    def clone_single_module(module):
+        # Assume module has default constructor arguments for deep copying
+        new_mod = type(module)(
+            *getattr(module, "_clone_args", ()), **getattr(module, "_clone_kwargs", {})
+        )
+        new_mod.load_state_dict(module.state_dict())
+        return new_mod
+
+    # If the module stores constructor args, use them. Otherwise, fallback to deepcopy.
+    if hasattr(module, "_clone_args") or hasattr(module, "_clone_kwargs"):
+        modules = [clone_single_module(module) for _ in range(N)]
+    else:
+        # Fallback: Use the class and state dict if possible, otherwise deepcopy
+        try:
+            modules = [type(module)() for _ in range(N)]  # Try default constructor
+            state = module.state_dict()
+            for m in modules:
+                m.load_state_dict(state)
+        except Exception:
+            import copy
+
+            modules = [copy.deepcopy(module) for _ in range(N)]
+    return nn.ModuleList(modules)
 
 
 class GRASPLayer(nn.Module):
@@ -521,7 +544,7 @@ class GRASP(BaseModel):
                 # (patient, event, embedding_dim)
                 x = self.embeddings[feature_key](x)
                 # (patient, event)
-                mask = torch.any(x !=0, dim=2)
+                mask = torch.any(x != 0, dim=2)
 
             # for case 2: [[code1, code2], [code3, ...], ...]
             elif (dim_ == 3) and (type_ == str):
@@ -535,7 +558,7 @@ class GRASP(BaseModel):
                 # (patient, visit, embedding_dim)
                 x = torch.sum(x, dim=2)
                 # (patient, visit)
-                mask = torch.any(x !=0, dim=2)
+                mask = torch.any(x != 0, dim=2)
 
             # for case 3: [[1.5, 2.0, 0.0], ...]
             elif (dim_ == 2) and (type_ in [float, int]):
