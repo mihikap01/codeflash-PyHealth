@@ -264,45 +264,39 @@ def drug_recommendation_omop_fn(patient: Patient):
         [{'visit_id': '130744', 'patient_id': '103', 'conditions': [['42', '109', '98', '663', '58', '51'], ['98', '663', '58', '51']], 'procedures': [['1'], ['2', '3']], 'label': [['2', '3', '4'], ['0', '1', '4', '5']]}]
     """
 
-    samples = []
-    for i in range(len(patient)):
-        visit: Visit = patient[i]
+    # Pre-extract all visits' attributes (one pass)
+    patient_id = patient.patient_id
+    visit_id_list = []
+    conditions_list = []
+    procedures_list = []
+    drugs_list = []
+
+    for visit in patient:
         conditions = visit.get_code_list(table="condition_occurrence")
         procedures = visit.get_code_list(table="procedure_occurrence")
         drugs = visit.get_code_list(table="drug_exposure")
-        # exclude: visits without condition, procedure, or drug code
-        if len(conditions) * len(procedures) * len(drugs) == 0:
-            continue
-        # TODO: should also exclude visit with age < 18
-        samples.append(
-            {
-                "visit_id": visit.visit_id,
-                "patient_id": patient.patient_id,
-                "conditions": conditions,
-                "procedures": procedures,
-                "drugs": drugs,
-                "drugs_all": drugs,
-            }
-        )
-    # exclude: patients with less than 2 visit
-    if len(samples) < 2:
+        if conditions and procedures and drugs:
+            visit_id_list.append(visit.visit_id)
+            conditions_list.append(conditions)
+            procedures_list.append(procedures)
+            drugs_list.append(drugs)
+
+    num_visits = len(visit_id_list)
+    if num_visits < 2:
         return []
-    # add history
-    samples[0]["conditions"] = [samples[0]["conditions"]]
-    samples[0]["procedures"] = [samples[0]["procedures"]]
-    samples[0]["drugs_all"] = [samples[0]["drugs_all"]]
 
-    for i in range(1, len(samples)):
-        samples[i]["conditions"] = samples[i - 1]["conditions"] + [
-            samples[i]["conditions"]
-        ]
-        samples[i]["procedures"] = samples[i - 1]["procedures"] + [
-            samples[i]["procedures"]
-        ]
-        samples[i]["drugs_all"] = samples[i - 1]["drugs_all"] + [
-            samples[i]["drugs_all"]
-        ]
-
+    # Precompute cumulative histories (slice views)
+    samples = []
+    for i in range(num_visits):
+        sample = {
+            "visit_id": visit_id_list[i],
+            "patient_id": patient_id,
+            "conditions": conditions_list[: i + 1],
+            "procedures": procedures_list[: i + 1],
+            "drugs": drugs_list[i],
+            "drugs_all": drugs_list[: i + 1],
+        }
+        samples.append(sample)
     return samples
 
 
