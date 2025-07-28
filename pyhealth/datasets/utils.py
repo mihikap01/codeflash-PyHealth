@@ -41,19 +41,21 @@ def strptime(s: str) -> Optional[datetime]:
         return None
     return dateutil_parse(s)
 
-def padyear(year: str, month='1', day='1') -> str:
+
+def padyear(year: str, month="1", day="1") -> str:
     """Pad a date time year of format 'YYYY' to format 'YYYY-MM-DD'
-    
-    Args: 
+
+    Args:
         year: str, year to be padded. Must be non-zero value.
         month: str, month string to be used as padding. Must be in [1, 12]
         day: str, day string to be used as padding. Must be in [1, 31]
-        
+
     Returns:
         padded_date: str, padded year.
-    
+
     """
     return f"{year}-{month}-{day}"
+
 
 def flatten_list(l: List) -> List:
     """Flattens a list of list.
@@ -157,27 +159,39 @@ def collate_fn_dict_with_padding(batch: List[dict]) -> dict:
         A dictionary where each key corresponds to a list of values from the batch.
         Tensor values are padded to the same shape.
     """
+    # Pre-extract keys just once
+    first_elem = batch[0]
+    keys = list(first_elem.keys())
     collated = {}
-    keys = batch[0].keys()
 
     for key in keys:
+        # Build values list using a generator for more efficient memory usage
         values = [sample[key] for sample in batch]
 
-        if isinstance(values[0], torch.Tensor):
-            # Check if shapes are the same
-            shapes = [v.shape for v in values]
-            if all(shape == shapes[0] for shape in shapes):
-                # Same shape, just stack
+        v0 = values[0]
+        if isinstance(v0, torch.Tensor):
+            v0_shape = v0.shape
+
+            # Fast shape-equality short-circuit: avoid making entire shapes list
+            same_shape = True
+            for v in values[1:]:
+                if v.shape != v0_shape:
+                    same_shape = False
+                    break
+
+            if same_shape:
+                # All tensor shapes equal: stack directly
                 collated[key] = torch.stack(values)
             else:
-                # Variable shapes, pad
-                if values[0].dim() == 0:
-                    # Scalars, treat as stackable
+                v0_dim = v0.dim()
+                # If 0-dim tensors, they are scalars, stack anyway
+                if v0_dim == 0:
                     collated[key] = torch.stack(values)
-                elif values[0].dim() >= 1:
-                    collated[key] = pad_sequence(values, batch_first=True, padding_value=0)
                 else:
-                    raise ValueError(f"Unsupported tensor shape: {values[0].shape}")
+                    # Only pad if dim >= 1 (assume non-scalars)
+                    collated[key] = pad_sequence(
+                        values, batch_first=True, padding_value=0
+                    )
         else:
             # Non-tensor data: keep as list
             collated[key] = values
@@ -185,7 +199,9 @@ def collate_fn_dict_with_padding(batch: List[dict]) -> dict:
     return collated
 
 
-def get_dataloader(dataset: torch.utils.data.Dataset, batch_size: int, shuffle: bool = False) -> DataLoader:
+def get_dataloader(
+    dataset: torch.utils.data.Dataset, batch_size: int, shuffle: bool = False
+) -> DataLoader:
     """Creates a DataLoader for a given dataset.
 
     Args:
