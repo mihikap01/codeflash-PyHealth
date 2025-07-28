@@ -297,7 +297,10 @@ class SCRIB(SetPredictor):
         :rtype: Dict[str, torch.Tensor]
         """
         ret = self.model(**kwargs)
-        ret["y_predset"] = ret["y_prob"] > self.t
+        # Cache threshold and y_prob for faster access
+        t = self.t
+        y_prob = ret["y_prob"]
+        ret["y_predset"] = y_prob > t
         return ret
 
 
