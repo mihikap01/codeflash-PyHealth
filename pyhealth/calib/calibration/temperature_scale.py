@@ -6,6 +6,7 @@ Implementation based on https://github.com/gpleiss/temperature_scaling
 
 from typing import Dict
 
+import numpy as np
 import torch
 from torch import optim
 from torch.utils.data import Subset
@@ -74,7 +75,8 @@ class TemperatureScaling(PostHocCalibrator):
         self.num_classes = None
 
         self.temperature = torch.nn.Parameter(
-            torch.tensor(1.5, dtype=torch.float32, device=self.device), requires_grad=True
+            torch.tensor(1.5, dtype=torch.float32, device=self.device),
+            requires_grad=True,
         )
 
     def calibrate(self, cal_dataset: Subset, lr=0.01, max_iter=50, mult_temp=False):
@@ -92,32 +94,48 @@ class TemperatureScaling(PostHocCalibrator):
         :return: None
         :rtype: None
         """
-
+        # Inference on calibration set - bottleneck
         _cal_data = prepare_numpy_dataset(
             self.model, cal_dataset, ["y_true", "logit"], debug=self.debug
         )
 
         if self.num_classes is None:
             self.num_classes = _cal_data["logit"].shape[1]
-        if self.mode == "multilabel" and mult_temp:
-            self.temperature = torch.tensor(
-                [1.5 for _ in range(self.num_classes)],
-                dtype=torch.float32,
-                device=self.device,
+        if (
+            self.mode == "multilabel"
+            and mult_temp
+            and (
+                not isinstance(self.temperature, torch.Tensor)
+                or self.temperature.shape != (self.num_classes,)
+            )
+        ):
+            self.temperature = torch.nn.Parameter(
+                torch.tensor(
+                    [1.5] * self.num_classes,
+                    dtype=torch.float32,
+                    device=self.device,
+                ),
                 requires_grad=True,
             )
         optimizer = optim.LBFGS([self.temperature], lr=lr, max_iter=max_iter)
         criterion = self.model.get_loss_function()
-        logits = torch.tensor(_cal_data["logit"], dtype=torch.float, device=self.device)
-        label = torch.tensor(
-            _cal_data["y_true"],
-            dtype=torch.long if self.model.mode == "multiclass" else torch.float32,
-            device=self.device,
+        logits = torch.from_numpy(_cal_data["logit"]).to(
+            self.device, dtype=torch.float32
+        )
+        label = torch.from_numpy(_cal_data["y_true"]).to(
+            self.device,
+            dtype=(torch.long if self.model.mode == "multiclass" else torch.float32),
         )
 
         def _eval():
             optimizer.zero_grad()
-            loss = criterion(logits / self.temperature, label)
+            temp = self.temperature
+            # Broadcast for multilabel if needed
+            if temp.dim() > 0:
+                l = logits / temp.unsqueeze(0)
+            else:
+                l = logits / temp
+            loss = criterion(l, label)
             loss.backward()
             return loss
 
@@ -143,6 +161,19 @@ class TemperatureScaling(PostHocCalibrator):
         criterion = self.model.get_loss_function()
         ret["loss"] = criterion(ret["logit"], ret["y_true"])
         return ret
+
+
+# Helper function to stack and convert to numpy efficiently
+def _stack_to_numpy(tensors):
+    if len(tensors) == 0:
+        return np.array([])
+    elif isinstance(tensors[0], np.ndarray):
+        return np.concatenate(tensors, axis=0)
+    else:
+        return np.concatenate(
+            [x.cpu().numpy() if torch.is_tensor(x) else np.array(x) for x in tensors],
+            axis=0,
+        )
 
 
 if __name__ == "__main__":
