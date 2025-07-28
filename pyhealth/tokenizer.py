@@ -88,10 +88,14 @@ class Tokenizer:
             special_tokens: Optional[List[str]], list of special tokens to add to
                 the vocabulary. (e.g., <pad>, <unk>). Default is empty list.
         """
+        # Initialize the vocabulary object.
+        if special_tokens is None:
+            special_tokens = []
         self.vocabulary = Vocabulary(tokens=tokens, special_tokens=special_tokens)
 
     def get_padding_index(self):
         """Returns the index of the padding token."""
+        # Return the index of the padding token.
         return self.vocabulary("<pad>")
 
     def get_vocabulary_size(self):
@@ -105,7 +109,7 @@ class Tokenizer:
 
     def convert_tokens_to_indices(self, tokens: List[str]) -> List[int]:
         """Converts a list of tokens to indices.
-        
+
         Examples:
             >>> tokens = ['A03C', 'A03D', 'A03E', 'A03F', 'A04A', 'A05A', 'A05B', 'B035', 'C129']
             >>> indices = tokenizer.convert_tokens_to_indices(tokens)
@@ -116,7 +120,7 @@ class Tokenizer:
 
     def convert_indices_to_tokens(self, indices: List[int]) -> List[str]:
         """Converts a list of indices to tokens.
-        
+
         Examples:
             >>> indices = [0, 1, 2, 3, 4, 5]
             >>> tokens = tokenizer.convert_indices_to_tokens(indices)
@@ -141,7 +145,7 @@ class Tokenizer:
             truncation: whether to truncate the tokens to max_length.
             max_length: maximum length of the tokens. This argument is ignored
                 if truncation is False.
-        
+
         Examples:
             >>> tokens = [
             ...     ['A03C', 'A03D', 'A03E', 'A03F'],
@@ -181,7 +185,7 @@ class Tokenizer:
         Args:
             batch: List of lists of indices to convert to tokens.
             padding: whether to keep the padding tokens from the tokens.
-        
+
         Examples:
             >>> indices = [
             ...     [8, 9, 10, 11],
@@ -220,7 +224,7 @@ class Tokenizer:
             max_length: a tuple of two integers indicating the maximum length of the
                 tokens along the first and second dimension. This argument is ignored
                 if truncation is False.
-        
+
         Examples:
                 >>> tokens = [
                 ...     [
@@ -290,15 +294,15 @@ class Tokenizer:
         Args:
             batch: List of lists of lists of indices to convert to tokens.
             padding: whether to keep the padding tokens from the tokens.
-        
+
         Examples:
             >>> indices = [
             ...     [
-            ...         [8, 9, 10, 11], 
+            ...         [8, 9, 10, 11],
             ...         [24, 25, 0, 0]
-            ...     ], 
+            ...     ],
             ...     [
-            ...         [12, 1, 1, 0], 
+            ...         [12, 1, 1, 0],
             ...         [0, 0, 0, 0]
             ...     ]
             ... ]
