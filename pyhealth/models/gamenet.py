@@ -11,6 +11,7 @@ from pyhealth.models import BaseModel
 from pyhealth.models.utils import get_last_visit, batch_to_multihot
 from pyhealth import BASE_CACHE_PATH as CACHE_PATH
 
+
 class GCNLayer(nn.Module):
     """GCN layer.
 
@@ -79,10 +80,12 @@ class GCN(nn.Module):
         self.dropout = dropout
 
         voc_size = adj.shape[0]
-        adj = adj + torch.eye(adj.shape[0])
+        adj = adj + torch.eye(adj.shape[0], device=adj.device, dtype=adj.dtype)
         adj = self.normalize(adj)
         self.adj = torch.nn.Parameter(adj, requires_grad=False)
-        self.x = torch.nn.Parameter(torch.eye(voc_size), requires_grad=False)
+        self.x = torch.nn.Parameter(
+            torch.eye(voc_size, device=adj.device, dtype=adj.dtype), requires_grad=False
+        )
 
         self.gcn1 = GCNLayer(voc_size, hidden_size)
         self.dropout_layer = nn.Dropout(p=dropout)
@@ -91,10 +94,9 @@ class GCN(nn.Module):
     def normalize(self, mx: torch.tensor) -> torch.tensor:
         """Normalizes the matrix row-wise."""
         rowsum = mx.sum(1)
-        r_inv = torch.pow(rowsum, -1).flatten()
-        r_inv[torch.isinf(r_inv)] = 0.0
-        r_mat_inv = torch.diagflat(r_inv)
-        mx = torch.mm(r_mat_inv, mx)
+        r_inv = torch.where(rowsum != 0, 1.0 / rowsum, torch.zeros_like(rowsum))
+        # Broadcasting to scale each row
+        mx = mx * r_inv.unsqueeze(1)
         return mx
 
     def forward(self) -> torch.tensor:
@@ -224,7 +226,7 @@ class GAMENet(BaseModel):
     Note:
         This model is only for medication prediction which takes conditions
         and procedures as feature_keys, and drugs as label_key.
-        It only operates on the visit level. Thus, we have disable the 
+        It only operates on the visit level. Thus, we have disable the
         feature_keys, label_key, and mode arguments.
 
     Note:
@@ -247,7 +249,7 @@ class GAMENet(BaseModel):
         hidden_dim: int = 128,
         num_layers: int = 1,
         dropout: float = 0.5,
-        **kwargs
+        **kwargs,
     ):
         super(GAMENet, self).__init__(
             dataset=dataset,
@@ -300,11 +302,11 @@ class GAMENet(BaseModel):
             dropout=dropout,
             **kwargs,
         )
-        
+
         # save ddi adj
         ddi_adj = self.generate_ddi_adj()
         np.save(os.path.join(CACHE_PATH, "ddi_adj.npy"), ddi_adj)
-        
+
     def generate_ddi_adj():
         """Generates the DDI graph adjacency matrix."""
         atc = ATC()
@@ -358,7 +360,7 @@ class GAMENet(BaseModel):
         procedures: List[List[List[str]]],
         drugs_hist: List[List[List[str]]],
         drugs: List[List[str]],
-        **kwargs
+        **kwargs,
     ) -> Dict[str, torch.Tensor]:
         """Forward propagation.
 
