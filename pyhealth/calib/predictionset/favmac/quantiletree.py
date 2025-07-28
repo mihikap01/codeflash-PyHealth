@@ -72,8 +72,11 @@ class BST:
 
     # find the node with the maximum key
     def maximum(self, node):
-        while node.right != self.nil:
-            node = node.right
+        nil = self.nil  # local var to avoid attribute lookup in the loop
+        right = node.right
+        while right is not nil:
+            node = right
+            right = node.right
         return node
 
     # find the successor of a given node
