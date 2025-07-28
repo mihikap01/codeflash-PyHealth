@@ -17,6 +17,7 @@ from pyhealth.datasets import SampleEHRDataset
 
 from pyhealth import BASE_CACHE_PATH as CACHE_PATH
 
+
 def graph_batch_from_smiles(smiles_list, device=torch.device("cpu")):
     edge_idxes, edge_feats, node_feats, lstnode, batch = [], [], [], 0, []
     graphs = [smiles2graph(x) for x in smiles_list]
@@ -205,7 +206,6 @@ class AttnAgg(torch.nn.Module):
         self.model_dim = mid_dim
         self.Qdense = torch.nn.Linear(Qdim, mid_dim)
         self.Kdense = torch.nn.Linear(Kdim, mid_dim)
-        # self.use_ln = use_ln
 
     def forward(
         self,
@@ -232,23 +232,34 @@ class AttnAgg(torch.nn.Module):
             torch.Tensor: aggregated features, shape of
                 [batch, main_num, K_dim]
         """
-        Q = self.Qdense(main_feat)
-        K = self.Kdense(other_feat)
-        Attn = torch.matmul(Q, K.transpose(0, 1)) / math.sqrt(self.model_dim)
+        Q = self.Qdense(main_feat)  # [main_num, mid_dim]
+        K = self.Kdense(other_feat)  # [other_num, mid_dim]
+        Attn = torch.matmul(Q, K.transpose(0, 1)) / math.sqrt(
+            self.model_dim
+        )  # [main_num, other_num]
 
         if mask is not None:
             Attn = torch.masked_fill(Attn, mask, -(1 << 32))
-        Attn = torch.softmax(Attn, dim=-1)
+        Attn = torch.softmax(Attn, dim=-1)  # [main_num, other_num]
 
-        batch_size = fix_feat.shape[0]
-        # [batch_size, other_num, other_num]
-        fix_feat = torch.diag_embed(fix_feat)
-        # [batch_size, other_num, K_dim]
-        other_feat = other_feat.repeat(batch_size, 1, 1)
-        other_feat = torch.matmul(fix_feat, other_feat)
-        Attn = Attn.repeat(batch_size, 1, 1)
+        batch_size, other_num = fix_feat.shape
 
-        return torch.matmul(Attn, other_feat)
+        # Scale other_feat by fix_feat for each batch using broadcasting
+        # fix_feat: [batch, other_num], other_feat: [other_num, K_dim] → out: [batch, other_num, K_dim]
+        scaled_other_feat = fix_feat.unsqueeze(-1) * other_feat.unsqueeze(
+            0
+        )  # [batch, other_num, K_dim]
+
+        # Expand Attn to [batch, main_num, other_num] by unsqueezing and broadcasting
+        Attn = Attn.unsqueeze(0)  # [1, main_num, other_num], will broadcast in matmul
+
+        # Batch matmul: (Attn [1,main_num,other_num] or [batch,main_num,other_num])
+        # with scaled_other_feat [batch, other_num, K_dim]
+        # This is equivalent to:
+        #   for b in batch: result[b] = Attn @ scaled_other_feat[b]
+        result = torch.matmul(Attn, scaled_other_feat)  # [batch, main_num, K_dim]
+
+        return result
 
 
 class MoleRecLayer(torch.nn.Module):
@@ -547,7 +558,7 @@ class MoleRec(BaseModel):
             raise ValueError("number of GNN layers is determined by num_gnn_layers")
         if "hidden_size" in kwargs:
             raise ValueError("hidden_size is determined by hidden_dim")
-    
+
             # save ddi adj
         ddi_adj = self.generate_ddi_adj()
         np.save(os.path.join(CACHE_PATH, "ddi_adj.npy"), ddi_adj.numpy())
