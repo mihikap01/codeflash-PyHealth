@@ -66,8 +66,11 @@ class BST:
 
     # find the node with the minimum key
     def minimum(self, node):
-        while node.left != self.nil:
-            node = node.left
+        nil = self.nil              # local var for faster access
+        node_left = node.left
+        while node_left is not nil: # use identity check and cached attr
+            node = node_left
+            node_left = node.left
         return node
 
     # find the node with the maximum key
