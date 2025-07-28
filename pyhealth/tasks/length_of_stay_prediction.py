@@ -17,15 +17,11 @@ def categorize_los(days: int):
     # ICU stays shorter than a day
     if days < 1:
         return 0
-    # each day of the first week
-    elif 1 <= days <= 7:
+    if days <= 7:
         return days
-    # stays of over one week but less than two
-    elif 7 < days <= 14:
+    if days <= 14:
         return 8
-    # stays of over two weeks
-    else:
-        return 9
+    return 9
 
 
 def length_of_stay_prediction_mimic3_fn(patient: Patient):
