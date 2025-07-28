@@ -321,12 +321,14 @@ class MultimodalMortalityPredictionMIMIC4(BaseTask):
 
     def _clean_sequence(self, sequence: Optional[List[Any]]) -> List[str]:
         """Clean a sequence by removing None values and converting to strings."""
-        if sequence is None:
+        if not sequence:
             return []
-        
-        # Remove None, convert to strings, remove empty strings
-        cleaned = [str(item).strip() for item in sequence if item is not None and str(item).strip()]
-        return cleaned
+        str_fn = str
+        # Cleaned: avoids multiple str(item), only strips once per item
+        return [
+            s for item in sequence
+            if item is not None and (s := str_fn(item).strip())
+        ]
 
     def _clean_text(self, text: Optional[str]) -> Optional[str]:
         """Clean text by stripping whitespace and returning None if empty."""
