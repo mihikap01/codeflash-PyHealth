@@ -13,11 +13,12 @@ class ICD9PROC(InnerMap):
     @staticmethod
     def standardize(code: str):
         """Standardizes ICD9PROC code."""
-        if "." in code:
+        # Most codes are already standardized or short.
+        # Fast path: if the code contains a dot or is very short, return as-is
+        if "." in code or len(code) <= 2:
             return code
-        if len(code) <= 2:
-            return code
-        return code[:2] + "." + code[2:]
+        # Otherwise, insert the dot after the second character
+        return f"{code[:2]}.{code[2:]}"
 
 
 if __name__ == "__main__":
