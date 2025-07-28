@@ -105,7 +105,7 @@ class Tokenizer:
 
     def convert_tokens_to_indices(self, tokens: List[str]) -> List[int]:
         """Converts a list of tokens to indices.
-        
+
         Examples:
             >>> tokens = ['A03C', 'A03D', 'A03E', 'A03F', 'A04A', 'A05A', 'A05B', 'B035', 'C129']
             >>> indices = tokenizer.convert_tokens_to_indices(tokens)
@@ -116,7 +116,7 @@ class Tokenizer:
 
     def convert_indices_to_tokens(self, indices: List[int]) -> List[str]:
         """Converts a list of indices to tokens.
-        
+
         Examples:
             >>> indices = [0, 1, 2, 3, 4, 5]
             >>> tokens = tokenizer.convert_indices_to_tokens(indices)
@@ -141,7 +141,7 @@ class Tokenizer:
             truncation: whether to truncate the tokens to max_length.
             max_length: maximum length of the tokens. This argument is ignored
                 if truncation is False.
-        
+
         Examples:
             >>> tokens = [
             ...     ['A03C', 'A03D', 'A03E', 'A03F'],
@@ -161,15 +161,38 @@ class Tokenizer:
             case 3: [[9, 10, 11], [12, 1, 1]]
         """
 
+        # Prefetch, as attribute lookup is slow in Python loops
+        vocab_call = self.vocabulary
+
+        # Apply truncation (slice from the right), collect lengths for later padding
         if truncation:
-            batch = [tokens[-max_length:] for tokens in batch]
-        if padding:
-            batch_max_length = max([len(tokens) for tokens in batch])
-            batch = [
-                tokens + ["<pad>"] * (batch_max_length - len(tokens))
+            batch_truncated = [
+                tokens[-max_length:] if len(tokens) > max_length else tokens
                 for tokens in batch
             ]
-        return [[self.vocabulary(token) for token in tokens] for tokens in batch]
+        else:
+            batch_truncated = batch
+
+        # If padding, compute max length and pad in one go
+        if padding:
+            batch_max_length = max(len(tokens) for tokens in batch_truncated)
+            # Pre-create pad list for performance (if needed)
+            pad_token = "<pad>"
+            out = []
+            for tokens in batch_truncated:
+                pad_count = batch_max_length - len(tokens)
+                if pad_count > 0:
+                    tokens_padded = tokens + [pad_token] * pad_count
+                else:
+                    tokens_padded = tokens
+                # Map tokens to indices in one go (avoid double loop)
+                out.append([vocab_call(token) for token in tokens_padded])
+            return out
+        else:
+            # No padding, just map tokens to indices
+            return [
+                [vocab_call(token) for token in tokens] for tokens in batch_truncated
+            ]
 
     def batch_decode_2d(
         self,
@@ -181,7 +204,7 @@ class Tokenizer:
         Args:
             batch: List of lists of indices to convert to tokens.
             padding: whether to keep the padding tokens from the tokens.
-        
+
         Examples:
             >>> indices = [
             ...     [8, 9, 10, 11],
@@ -220,7 +243,7 @@ class Tokenizer:
             max_length: a tuple of two integers indicating the maximum length of the
                 tokens along the first and second dimension. This argument is ignored
                 if truncation is False.
-        
+
         Examples:
                 >>> tokens = [
                 ...     [
@@ -290,15 +313,15 @@ class Tokenizer:
         Args:
             batch: List of lists of lists of indices to convert to tokens.
             padding: whether to keep the padding tokens from the tokens.
-        
+
         Examples:
             >>> indices = [
             ...     [
-            ...         [8, 9, 10, 11], 
+            ...         [8, 9, 10, 11],
             ...         [24, 25, 0, 0]
-            ...     ], 
+            ...     ],
             ...     [
-            ...         [12, 1, 1, 0], 
+            ...         [12, 1, 1, 0],
             ...         [0, 0, 0, 0]
             ...     ]
             ... ]
