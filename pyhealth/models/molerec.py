@@ -17,6 +17,7 @@ from pyhealth.datasets import SampleEHRDataset
 
 from pyhealth import BASE_CACHE_PATH as CACHE_PATH
 
+
 def graph_batch_from_smiles(smiles_list, device=torch.device("cpu")):
     edge_idxes, edge_feats, node_feats, lstnode, batch = [], [], [], 0, []
     graphs = [smiles2graph(x) for x in smiles_list]
@@ -38,6 +39,20 @@ def graph_batch_from_smiles(smiles_list, device=torch.device("cpu")):
     result["num_nodes"] = lstnode
     result["num_edges"] = result["edge_index"].shape[1]
     return result
+
+
+def forward_self(self, X: torch.Tensor) -> torch.Tensor:
+    # This is a fast self-attention version of forward(X, X)
+    # You can share Q, K, V projections, reduce memory ops
+    Q = self.fc_q(X)
+    K = self.fc_k(X)
+    V = self.fc_v(X)
+
+    # ... rest of attention as in your `forward` impl
+    # (optional) save some computation if fc_q == fc_k
+
+    # (replace with your MAB logic)
+    return self.attend(Q, K, V)
 
 
 class StaticParaDict(torch.nn.Module):
@@ -547,7 +562,7 @@ class MoleRec(BaseModel):
             raise ValueError("number of GNN layers is determined by num_gnn_layers")
         if "hidden_size" in kwargs:
             raise ValueError("hidden_size is determined by hidden_dim")
-    
+
             # save ddi adj
         ddi_adj = self.generate_ddi_adj()
         np.save(os.path.join(CACHE_PATH, "ddi_adj.npy"), ddi_adj.numpy())
