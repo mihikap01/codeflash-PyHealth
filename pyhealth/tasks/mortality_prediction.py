@@ -210,11 +210,16 @@ class MortalityPredictionMIMIC4(BaseTask):
         2. Converting to strings
         3. Removing empty strings
         """
-        if sequence is None:
+        if not sequence:
             return []
-        
-        # Remove None, convert to strings, remove empty strings
-        cleaned = [str(item).strip() for item in sequence if item is not None and str(item).strip()]
+
+        # Iterate once, convert to string and strip a single time per element.
+        cleaned = []
+        for item in sequence:
+            if item is not None:
+                s = str(item).strip()
+                if s:
+                    cleaned.append(s)
         return cleaned
 
     def __call__(self, patient: Any) -> List[Dict[str, Any]]:
