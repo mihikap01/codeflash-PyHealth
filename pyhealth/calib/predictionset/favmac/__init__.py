@@ -44,13 +44,25 @@ class AdditiveSetFunction:
         return self.util_call(S, Y, pred, sample=sample)
 
     def naive_call(self, S: np.ndarray) -> float:
+        # Optimize to avoid temporary array creation: Use np.dot for 1-D arrays
+        if S.ndim == 1 and np.asarray(self.values).ndim == 1:
+            return np.dot(S, self.values)
         return np.sum(S * self.values)
 
     def util_call(self, S: np.ndarray, Y:np.ndarray=None, pred:np.ndarray=None, sample=1000) -> float:
         assert Y is None or pred is None
+        # prefer np.dot (avoiding intermediate allocation)
+        values = self.values
         if pred is not None:
-            return self.naive_call(S * pred) # This is because of additivity.
-        if Y is not None: return self.naive_call(S * Y)
+            if S.ndim == 1 and pred.ndim == 1 and np.asarray(values).ndim == 1:
+                # (S * pred) · values = S · (pred * values)
+                return np.dot(S, pred * values)
+            return np.sum(S * pred * values)
+        if Y is not None:
+            if S.ndim == 1 and Y.ndim == 1 and np.asarray(values).ndim == 1:
+                return np.dot(S, Y * values)
+            return np.sum(S * Y * values)
+        # Optimize naive_call(S) path as well
         return self.naive_call(S)
 
     def cost_call(self, S: np.ndarray, Y:np.ndarray) -> float:
