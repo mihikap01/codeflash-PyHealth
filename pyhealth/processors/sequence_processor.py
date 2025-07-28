@@ -18,7 +18,8 @@ class SequenceProcessor(FeatureProcessor):
     def __init__(self):
         # -1 for <unk> for ease of boolean arithmetic > 0, > -1, etc.
         # TODO: this can be a problem if we pass -1 into nn.Embedding
-        self.code_vocab: Dict[Any, int] = {"<unk>": -1, "<pad>": 0}
+        # Use a per-instance shallow copy of the constant for mutability.
+        self.code_vocab: Dict[Any, int] = _INITIAL_CODE_VOCAB.copy()
         self._next_index = 1
 
     def process(self, value: Any) -> torch.Tensor:
@@ -32,7 +33,7 @@ class SequenceProcessor(FeatureProcessor):
         """
         indices = []
         for token in value:
-            if token is None: # missing values
+            if token is None:  # missing values
                 indices.append(self.code_vocab["<unk>"])
             else:
                 if token not in self.code_vocab:
@@ -40,11 +41,12 @@ class SequenceProcessor(FeatureProcessor):
                     self._next_index += 1
                 indices.append(self.code_vocab[token])
         return torch.tensor(indices, dtype=torch.long)
-    
+
     def size(self):
         return len(self.code_vocab)
-    
+
     def __repr__(self):
-        return (
-            f"SequenceProcessor(code_vocab_size={len(self.code_vocab)})"
-        )
+        return f"SequenceProcessor(code_vocab_size={len(self.code_vocab)})"
+
+
+_INITIAL_CODE_VOCAB = {"<unk>": -1, "<pad>": 0}
