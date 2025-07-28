@@ -14,18 +14,14 @@ def categorize_los(days: int):
     Returns:
         category: int, category of length of stay
     """
-    # ICU stays shorter than a day
+    # Fast path using simple int bounds.
     if days < 1:
         return 0
-    # each day of the first week
-    elif 1 <= days <= 7:
+    if days <= 7:
         return days
-    # stays of over one week but less than two
-    elif 7 < days <= 14:
+    if days <= 14:
         return 8
-    # stays of over two weeks
-    else:
-        return 9
+    return 9
 
 
 def length_of_stay_prediction_mimic3_fn(patient: Patient):
@@ -113,25 +109,29 @@ def length_of_stay_prediction_mimic4_fn(patient: Patient):
         >>> mimic4_sample.samples[0]
         [{'visit_id': '130744', 'patient_id': '103', 'conditions': [['42', '109', '19', '122', '98', '663', '58', '51']], 'procedures': [['1']], 'label': 2}]
     """
+
     samples = []
+    pid = patient.patient_id  # avoid repeated attribute lookup
 
     for visit in patient:
-
+        # Fuse code extraction, short-circuit on any empty
         conditions = visit.get_code_list(table="diagnoses_icd")
+        if not conditions:
+            continue
         procedures = visit.get_code_list(table="procedures_icd")
+        if not procedures:
+            continue
         drugs = visit.get_code_list(table="prescriptions")
-        # exclude: visits without condition, procedure, or drug code
-        if len(conditions) * len(procedures) * len(drugs) == 0:
+        if not drugs:
             continue
 
         los_days = (visit.discharge_time - visit.encounter_time).days
         los_category = categorize_los(los_days)
 
-        # TODO: should also exclude visit with age < 18
         samples.append(
             {
                 "visit_id": visit.visit_id,
-                "patient_id": patient.patient_id,
+                "patient_id": pid,
                 "conditions": [conditions],
                 "procedures": [procedures],
                 "drugs": [drugs],
