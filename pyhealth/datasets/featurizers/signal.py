@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.signal import resample, butter, filtfilt
 
+
 class BiosignalFeaturizer:
 
     def __init__(self, target_length=256, lowcut=0.5, highcut=40.0, sampling_rate=100):
@@ -9,13 +10,16 @@ class BiosignalFeaturizer:
         self.highcut = highcut
         self.sampling_rate = sampling_rate
 
-    def _bandpass_filter(self, signal):
-        """Apply a bandpass filter to the signal."""
+        # Precompute filter coefficients for performance
         nyquist = 0.5 * self.sampling_rate
         low = self.lowcut / nyquist
         high = self.highcut / nyquist
-        b, a = butter(1, [low, high], btype="band")
-        return filtfilt(b, a, signal)
+        self._butter_b, self._butter_a = butter(1, [low, high], btype="band")
+
+    def _bandpass_filter(self, signal):
+        """Apply a bandpass filter to the signal."""
+        # Use precomputed coefficients for efficiency
+        return filtfilt(self._butter_b, self._butter_a, signal)
 
     def encode(self, signal):
         """
@@ -33,10 +37,13 @@ class BiosignalFeaturizer:
         # Resample to target length for uniformity
         resampled_signal = resample(filtered_signal, self.target_length)
 
-        # Normalize the signal
-        normalized_signal = (resampled_signal - np.mean(resampled_signal)) / np.std(resampled_signal)
+        # Normalize the signal (faster by saving mean and std)
+        mean = np.mean(resampled_signal)
+        std = np.std(resampled_signal)
+        normalized_signal = (resampled_signal - mean) / std
 
         return normalized_signal
+
 
 if __name__ == "__main__":
     # Example biosignal (ECG or other) with 1000 sample points
