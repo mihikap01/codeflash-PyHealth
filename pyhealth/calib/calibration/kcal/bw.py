@@ -13,6 +13,7 @@ class GoldenSectionBoundedSearch():
     """An implementation of https://en.wikipedia.org/wiki/Golden-section_search
     """
     gr = (1 + (5 ** 0.5)) * 0.5
+
     def __init__(self, func, lb, ub, tol=1e-4):
         self.func = func
         self.lb = lb
@@ -20,7 +21,6 @@ class GoldenSectionBoundedSearch():
         self.mem = {}
         self.hist = []
         self.tol = tol
-
         self.round_digit = -int(np.floor(np.log10(tol/2)))
         self._search(lb, ub)
 
@@ -38,11 +38,18 @@ class GoldenSectionBoundedSearch():
         return v
 
     def _search(self, a, b):
-        c = b - (b - a) / self.gr
-        d = a + (b - a) / self.gr
-        steps = int(np.ceil(np.log((b-a)/self.tol)/np.log(self.gr)))
+        gr = self.gr
+        c = b - (b - a) / gr
+        d = a + (b - a) / gr
+        tol = self.tol
+        steps = int(np.ceil(np.log((b-a)/tol)/np.log(gr)))
+
+        setdesc_every = 100  # only update tqdm description every 100 iters for speed
         with tqdm.tqdm(total=steps) as pbar:
-            while abs(b - a) > self.tol:
+            iter_count = 0
+            ss_repr = ''
+            abs_dif = abs(b - a)
+            while abs_dif > tol:
                 lc = self.eval(c)
                 ld = self.eval(d)
                 if lc < ld:
@@ -51,10 +58,15 @@ class GoldenSectionBoundedSearch():
                 else:
                     a = c
                     ss_repr = f'h={d:5f} Loss:{ld:3f}'
-                c = b - (b - a) / self.gr
-                d = a + (b - a) / self.gr
+                c = b - (b - a) / gr
+                d = a + (b - a) / gr
+                iter_count += 1
                 pbar.update(1)
-                pbar.set_description(ss_repr)
+                if iter_count % setdesc_every == 0:
+                    pbar.set_description(ss_repr)
+                abs_dif = abs(b - a)
+            # Final update of description (in case we stopped before the last update)
+            pbar.set_description(ss_repr)
         return (b + a) / 2.
 
     @classmethod
